@@ -7,10 +7,3 @@ import ()
 type Service interface {
 	Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 }
-
-// ------------------------------------------------------------
-// LOCK
-
-func Lock(req LockRequest, opts *LockOpts) (LockResponse, error) {
-	return LockResponse{}, nil
-}

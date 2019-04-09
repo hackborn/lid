@@ -6,7 +6,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"math/rand"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -19,7 +18,7 @@ func TestLock(t *testing.T) {
 		WantResp LockResponse
 		WantErr  error
 	}{
-		{LockRequest{}, LockResponse{}, nil},
+		{LockRequest{"s", "a", 0}, LockResponse{}, nil},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -55,22 +54,25 @@ type awsServiceBootstrap struct {
 }
 
 func (b *awsServiceBootstrap) OpenService() Service {
-	service, err := _newAwsServiceFromSession(b.sess)
+	// It's tough to test time-to-live:
+	// * Not supported in dynalite
+	// * Not supported in local dynamodb? (verify; add test if it is)
+	// * Hosted dynamo has no guarantee on when the item is actually deleted.
+	opts := ServiceOpts{Table: b.tablename, Duration: time.Second * 1}
+	service, err := _newAwsServiceFromSession(opts, b.sess)
 	if err != nil {
 		panic(err)
 	}
 	b.service = service
-	err = service.createTable(b.tablename)
-	// AWS has a variety of error types; some aren't public and you have to probe them.
-	// This happens because of the Time to Live, which is not available outside of the managed service.
-	if err != nil && !strings.HasPrefix(err.Error(), "UnknownOperationException") {
+	err = service.createTable()
+	if err != nil {
 		panic(err)
 	}
 	return service
 }
 
 func (b *awsServiceBootstrap) CloseService() error {
-	b.service.deleteTable(b.tablename)
+	b.service.deleteTable()
 	b.service = nil
 	return nil
 }

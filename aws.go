@@ -1,10 +1,12 @@
 package dlock
 
 import (
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"time"
 )
 
@@ -15,30 +17,50 @@ import (
 // This is basically the point of this package, so it's the
 // one and only service.
 type awsService struct {
-	db *dynamodb.DynamoDB
+	db   *dynamodb.DynamoDB
+	opts ServiceOpts
 }
 
-func NewAwsServiceFromSession(sess *session.Session) (Service, error) {
-	return _newAwsServiceFromSession(sess)
+func NewAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (Service, error) {
+	return _newAwsServiceFromSession(opts, sess)
 }
 
-func _newAwsServiceFromSession(sess *session.Session) (*awsService, error) {
+func _newAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (*awsService, error) {
 	if sess == nil {
 		return nil, sessionRequiredErr
+	}
+	if opts.Table == "" {
+		return nil, tableRequiredErr
+	}
+	if opts.Duration == emptyDuration {
+		return nil, durationRequiredErr
 	}
 	db := dynamodb.New(sess)
 	if db == nil {
 		return nil, dynamoRequiredErr
 	}
-	return &awsService{db: db}, nil
+	return &awsService{db: db, opts: opts}, nil
 }
 
 func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error) {
-	return LockResponse{}, nil
+	if s.db == nil {
+		return LockResponse{}, initializationFailedErr
+	}
+	endTime := time.Now().Add(s.opts.Duration)
+	state := LockState{req.Signature, req.Signee, req.Level, endTime, endTime.Unix()}
+	// Acquire a lock if:
+	// * It does not exist
+	// * Or it does, and I own it
+	// * Or it does, but my lock is higher
+	err := s.putItem(state, "")
+	return LockResponse{}, err
 }
 
 // createTable() creates my lock table.
-func (s *awsService) createTable(name string) error {
+func (s *awsService) createTable() error {
+	if s.opts.Table == "" {
+		return tableRequiredErr
+	}
 	// Define table
 	partitionname := "dsig"
 	partitiontype := "S"
@@ -59,7 +81,7 @@ func (s *awsService) createTable(name string) error {
 		KeyType:       aws.String("HASH"),
 	}
 	params := &dynamodb.CreateTableInput{
-		TableName:            aws.String(name),
+		TableName:            aws.String(s.opts.Table),
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{att1},
 		KeySchema:            []*dynamodb.KeySchemaElement{key},
 		// Throughput doesn't really matter. Just about everyone should be using
@@ -78,7 +100,7 @@ func (s *awsService) createTable(name string) error {
 
 	// Wait for table to be ready
 	cond := func() bool {
-		return s.tableStatus(name) == awsReady
+		return s.tableStatus(s.opts.Table) == awsReady
 	}
 	err = wait(cond)
 	if err != nil {
@@ -86,25 +108,27 @@ func (s *awsService) createTable(name string) error {
 	}
 
 	// Enable time to live
-	ttlparams := &dynamodb.UpdateTimeToLiveInput{
-		TableName: aws.String(name),
-		TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
-			AttributeName: aws.String(ttlname),
-			Enabled:       aws.Bool(true),
-		},
+	if !s.opts.TimeToLive.IsZero() {
+		ttlparams := &dynamodb.UpdateTimeToLiveInput{
+			TableName: aws.String(s.opts.Table),
+			TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
+				AttributeName: aws.String(ttlname),
+				Enabled:       aws.Bool(true),
+			},
+		}
+		_, err = s.db.UpdateTimeToLive(ttlparams)
 	}
-	_, err = s.db.UpdateTimeToLive(ttlparams)
 	return err
 }
 
 // deleteTable() deletes the table with the given name. Obviously this is an incredibly
 // dangerous function; it's used by testing but should not be used otherwise.
-func (s *awsService) deleteTable(name string) {
-	if name == "" {
+func (s *awsService) deleteTable() {
+	if s.opts.Table == "" {
 		panic("awsService.deleteTable() with no table name")
 	}
 	params := &dynamodb.DeleteTableInput{
-		TableName: aws.String(name),
+		TableName: aws.String(s.opts.Table),
 	}
 	_, err := s.db.DeleteTable(params)
 	if err != nil {
@@ -114,7 +138,7 @@ func (s *awsService) deleteTable(name string) {
 		panic("Error deleting table: " + err.Error())
 	}
 	cond := func() bool {
-		return s.tableStatus(name) == awsMissing
+		return s.tableStatus(s.opts.Table) == awsMissing
 	}
 	mustErr(wait(cond))
 }
@@ -138,6 +162,27 @@ func (s *awsService) tableStatus(name string) awsTableStatus {
 	default:
 		return awsReady
 	}
+}
+
+func (s *awsService) putItem(item interface{}, condition string) error {
+	atts, err := dynamodbattribute.MarshalMap(item)
+	if err != nil {
+		return err
+	}
+	params := &dynamodb.PutItemInput{
+		TableName:    aws.String(s.opts.Table),
+		Item:         atts,
+		ReturnValues: aws.String("ALL_OLD"),
+	}
+	if condition != "" {
+		params.ConditionExpression = aws.String(condition)
+	}
+	//	if opts != nil && opts.values != nil {
+	//		params.ExpressionAttributeValues = opts.values
+	//	}
+	resp, err := s.db.PutItem(params)
+	fmt.Println("put resp", resp)
+	return err
 }
 
 // ----------------------------------------
@@ -174,4 +219,8 @@ const (
 	awsMissing  awsTableStatus = iota // The table does not exist
 	awsCreating                       // The table is being created
 	awsReady                          // The table is ready
+)
+
+var (
+	emptyDuration = time.Second * 0
 )
