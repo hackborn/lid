@@ -1,41 +1,111 @@
 package dlock
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"math/rand"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestLock(t *testing.T) {
+// TestService() func provides scripted testing for the service, allowing
+// complex command lists. It's a little painful to write tests, but there
+// isn't much value in testing a single locking function.
+func TestService(t *testing.T) {
 	bootstraps := makeTestServices(t)
 
 	cases := []struct {
-		Req      LockRequest
-		WantResp LockResponse
-		WantErr  error
+		Script   string
+		WantResp ScriptResponse
 	}{
-		{LockRequest{"s", "a", 0}, LockResponse{}, nil},
+		{buildScript(lreq("s", "a", 0, false)), buildResp(lresp(LockFailed, "", nil))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			for _, b := range bootstraps {
-				runTestLock(t, b, tc.Req, tc.WantResp, tc.WantErr)
+				runTestService(t, b, tc.Script, tc.WantResp)
 			}
 		})
 	}
 }
 
-func runTestLock(t *testing.T, b ServiceBootstrap, req LockRequest, wantResp LockResponse, wantErr error) {
+func runTestService(t *testing.T, b ServiceBootstrap, script string, wantResp ScriptResponse) {
 	s := b.OpenService()
 	defer b.CloseService()
 
-	haveResp, haveErr := s.Lock(req, nil)
-	fmt.Println("haveResp", haveResp, "haveErr", haveErr)
-	t.Fatal()
+	haveResp, err := runScript(script, s)
+	if err != nil {
+		panic("Error running script: " + err.Error())
+	}
+	if !wantResp.equals(haveResp) {
+		fmt.Println("Mismatch have\n", haveResp, "\nwant\n", wantResp)
+		t.Fatal()
+	}
+	//	t.Fatal()
+}
+
+// --------------------------------------------------------------------------------------
+// BUILDING
+
+func buildScript(elem ...interface{}) string {
+	var b strings.Builder
+	for _, e := range elem {
+		data, err := json.Marshal(e)
+		if err != nil {
+			panic(err)
+		}
+		b.WriteString(string(data))
+	}
+	return b.String()
+}
+
+func lreq(signature, signee string, level int, force bool) interface{} {
+	body := make(map[string]interface{})
+	body["req"] = LockRequest{signature, signee, level}
+	if force {
+		body["opts"] = LockOpts{true}
+	}
+	cmd := make(map[string]interface{})
+	cmd[lockCmd] = body
+	return cmd
+}
+
+func buildResp(elem ...[]interface{}) ScriptResponse {
+	resp := ScriptResponse{}
+	for _, e := range elem {
+		resp.History = append(resp.History, e)
+	}
+	return resp
+}
+
+func lresp(status LockResponseStatus, previousDevice string, err error) []interface{} {
+	resp := LockResponse{status, previousDevice}
+	return []interface{}{resp, err}
+}
+
+// --------------------------------------------------------------------------------------
+// COMPARING
+
+func (a ScriptResponse) equals(b ScriptResponse) bool {
+	if len(a.History) != len(b.History) {
+		return false
+	}
+	for i, ah := range a.History {
+		bh := b.History[i]
+		if len(ah) != len(bh) {
+			return false
+		}
+		for ii, ahh := range ah {
+			if ahh != bh[ii] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // --------------------------------------------------------------------------------------

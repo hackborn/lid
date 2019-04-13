@@ -8,7 +8,7 @@ import (
 // LOCK-OPTS
 
 type LockOpts struct {
-	Force bool // If true then force the lock, even if someone else owns it.
+	Force bool `json:"force,omitempty"` // If true then force the lock, even if someone else owns it.
 }
 
 // ------------------------------------------------------------

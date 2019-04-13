@@ -15,6 +15,7 @@ func mustErr(err error) {
 // CONST and VAR
 
 var (
+	badRequestErr           = errors.New("Bad request")
 	conditionFailedErr      = errors.New("Condition failed")
 	durationRequiredErr     = errors.New("Bad request: Duration required")
 	dynamoRequiredErr       = errors.New("Can't create DynamoDB")
