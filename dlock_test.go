@@ -23,9 +23,11 @@ func TestService(t *testing.T) {
 		WantResp ScriptResponse
 	}{
 		// Successfully acquire empty lock
-		{buildScript(lreq("s", "a", 0, false)), buildResp(lresp(LockOk, "", nil))},
+		{buildScript(lreq("a", "0", 0, false)), buildResp(lresp(LockOk, "", nil))},
 		// Fail acquiring existing lock
-		{buildScript(lreq("s1", "a", 0, false), lreq("s1", "b", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", alreadyLockedErr))},
+		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", alreadyLockedErr))},
+		// Acquire existing lock through higher level
+		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 1, false)), buildResp(lresp(LockOk, "", nil), lresp(LockTransferred, "0", nil))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

@@ -253,11 +253,11 @@ func (b awsBuilder) put(dst *dynamodb.PutItemInput) {
 
 // awsRecord stores a single entry in the lock table.
 type awsRecord struct {
-	Signature    string    `json:"dsig,omitempty"`     // The ID for this lock. MUST MATCH awsSignatureKey
-	Signee       string    `json:"dsignee,omitempty"`  // The owner requesting the lock. MUST MATCH awsSigneeKey
-	Level        int       `json:"dlevel,omitempty"`   // The level of lock requested. Leave this at the default 0 if you don't require levels. MUST MATCH awsLevelKey
-	ExpiresEpoch int64     `json:"dexpires,omitempty"` // The time at which this lock expires (epoch). MUST MATCH awsExpiresKey
-	Expires      time.Time `json:"-"`                  // The time at which this lock expires. Convenience for clients.
+	Signature    string    `json:"dsig"`     // The ID for this lock. MUST MATCH awsSignatureKey
+	Signee       string    `json:"dsignee"`  // The owner requesting the lock. MUST MATCH awsSigneeKey
+	Level        int       `json:"dlevel"`   // The level of lock requested. Leave this at the default 0 if you don't require levels. MUST MATCH awsLevelKey
+	ExpiresEpoch int64     `json:"dexpires"` // The time at which this lock expires (epoch). MUST MATCH awsExpiresKey
+	Expires      time.Time `json:"-"`        // The time at which this lock expires. Convenience for clients.
 }
 
 // ------------------------------------------------------------
@@ -304,5 +304,5 @@ const (
 var (
 	awsEmptyDuration = time.Second * 0
 
-	awsAcquireLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se OR awsLevelKey < :lv OR ` + awsExpiresKey + ` < :ex`
+	awsAcquireLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se OR ` + awsLevelKey + ` < :lv OR ` + awsExpiresKey + ` < :ex`
 )
