@@ -25,7 +25,7 @@ func TestService(t *testing.T) {
 		// Successfully acquire empty lock
 		{buildScript(lreq("s", "a", 0, false)), buildResp(lresp(LockOk, "", nil))},
 		// Fail acquiring existing lock
-		{buildScript(lreq("s1", "a", 0, false), lreq("s1", "b", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", nil))},
+		{buildScript(lreq("s1", "a", 0, false), lreq("s1", "b", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", alreadyLockedErr))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -41,9 +41,7 @@ func runTestService(t *testing.T, b ServiceBootstrap, script string, wantResp Sc
 	defer b.CloseService()
 
 	haveResp, err := runScript(script, s)
-	if err != nil {
-		panic("Error running script: " + err.Error())
-	}
+	mustErr(err)
 	if !wantResp.equals(haveResp) {
 		fmt.Println("Mismatch have\n", haveResp, "\nwant\n", wantResp)
 		t.Fatal()
@@ -51,16 +49,14 @@ func runTestService(t *testing.T, b ServiceBootstrap, script string, wantResp Sc
 	//	t.Fatal()
 }
 
-// --------------------------------------------------------------------------------------
+// ------------------------------------------------------------
 // BUILDING
 
 func buildScript(elem ...interface{}) string {
 	var b strings.Builder
 	for _, e := range elem {
 		data, err := json.Marshal(e)
-		if err != nil {
-			panic(err)
-		}
+		mustErr(err)
 		b.WriteString(string(data))
 	}
 	return b.String()
@@ -90,7 +86,7 @@ func lresp(status LockResponseStatus, previousDevice string, err error) []interf
 	return []interface{}{resp, err}
 }
 
-// --------------------------------------------------------------------------------------
+// ------------------------------------------------------------
 // COMPARING
 
 func (a ScriptResponse) equals(b ScriptResponse) bool {
@@ -103,7 +99,7 @@ func (a ScriptResponse) equals(b ScriptResponse) bool {
 			return false
 		}
 		for ii, ahh := range ah {
-			if ahh != bh[ii] {
+			if !interfaceEquals(ahh, bh[ii]) {
 				return false
 			}
 		}
@@ -111,7 +107,23 @@ func (a ScriptResponse) equals(b ScriptResponse) bool {
 	return true
 }
 
-// --------------------------------------------------------------------------------------
+func interfaceEquals(a, b interface{}) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == b {
+		return true
+	}
+	switch aa := a.(type) {
+	case error:
+		if bb, ok := b.(error); ok {
+			return aa.Error() == bb.Error()
+		}
+	}
+	return false
+}
+
+// ------------------------------------------------------------
 // TEST-CFG
 
 // ServiceBootstrap is responsible for initializing and cleaning up a service during testing.
@@ -133,14 +145,10 @@ func (b *awsServiceBootstrap) OpenService() Service {
 	// * Hosted dynamo has no guarantee on when the item is actually deleted.
 	opts := ServiceOpts{Table: b.tablename, Duration: time.Second * 1}
 	service, err := _newAwsServiceFromSession(opts, b.sess)
-	if err != nil {
-		panic(err)
-	}
+	mustErr(err)
 	b.service = service
 	err = service.createTable()
-	if err != nil {
-		panic(err)
-	}
+	mustErr(err)
 	return service
 }
 

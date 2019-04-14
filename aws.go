@@ -1,7 +1,6 @@
 package dlock
 
 import (
-	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -32,7 +31,7 @@ func _newAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (*awsSer
 	if opts.Table == "" {
 		return nil, tableRequiredErr
 	}
-	if opts.Duration == emptyDuration {
+	if opts.Duration == awsEmptyDuration {
 		return nil, durationRequiredErr
 	}
 	db := dynamodb.New(sess)
@@ -43,24 +42,25 @@ func _newAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (*awsSer
 }
 
 func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error) {
-	if s.db == nil {
-		return LockResponse{}, initializationFailedErr
-	}
-	endTime := time.Now().Add(s.opts.Duration)
-	state := LockState{req.Signature, req.Signee, req.Level, endTime, endTime.UnixNano()}
+	now := time.Now()
+	endTime := now.Add(s.opts.Duration)
+	record := awsRecord{req.Signature, req.Signee, req.Level, endTime.UnixNano(), endTime}
+
 	// Acquire a lock if:
 	// * It does not exist
 	// * Or it does, and I own it
-	// * Or it does, but my lock is higher
+	// * Or it does, but my lock level is higher
 	// * Or it does, but it's expired
-	ls, err := s.putItem(state, "")
+	b := awsBuilder{condition: awsAcquireLockCond}
+	b = b.value(":se", req.Signee).value(":lv", req.Level).value(":ex", now.UnixNano())
+
+	ls, err := s.putItem(record, b)
 	if err != nil {
 		if err == conditionFailedErr {
-			return LockResponse{Status: LockFailed}, nil
+			return LockResponse{}, &PackageError{alreadyLockedMsg, ls.Signee}
 		}
 		return LockResponse{}, err
 	}
-	fmt.Println("Lock() lockstate", ls, "err", err)
 	resp := LockResponse{LockOk, ""}
 	if ls.Signee != "" {
 		if ls.Signee == req.Signee {
@@ -74,41 +74,39 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 }
 
 // putItem() is a convenience wrapper for DynamoDB's PutItem()
-func (s *awsService) putItem(item interface{}, condition string) (LockState, error) {
+func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) {
+	if s.db == nil {
+		return awsRecord{}, initializationFailedErr
+	}
 	atts, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
-		return LockState{}, err
+		return awsRecord{}, err
 	}
 	params := &dynamodb.PutItemInput{
 		TableName:    aws.String(s.opts.Table),
 		Item:         atts,
 		ReturnValues: aws.String("ALL_OLD"),
 	}
-	if condition != "" {
-		params.ConditionExpression = aws.String(condition)
-	}
-	//	if opts != nil && opts.values != nil {
-	//		params.ExpressionAttributeValues = opts.values
-	//	}
+	b.put(params)
 	resp, err := s.db.PutItem(params)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-			return LockState{}, conditionFailedErr
+			return awsRecord{}, conditionFailedErr
 		}
-		return LockState{}, err
+		return awsRecord{}, err
 	}
 	if len(resp.Attributes) < 1 {
-		return LockState{}, nil
+		return awsRecord{}, nil
 	}
-	ls := LockState{}
-	err = dynamodbattribute.UnmarshalMap(resp.Attributes, &ls)
-	if err == nil && ls.ExpiresInt != 0 {
-		ls.Expires = time.Unix(0, ls.ExpiresInt)
+	record := awsRecord{}
+	err = dynamodbattribute.UnmarshalMap(resp.Attributes, &record)
+	if err == nil && record.ExpiresEpoch != 0 {
+		record.Expires = time.Unix(0, record.ExpiresEpoch)
 	}
-	return ls, err
+	return record, err
 }
 
-// --------------------------------------------------------------------------------------
+// ------------------------------------------------------------
 // TABLE MANAGEMENT
 
 // createTable() creates my lock table.
@@ -117,10 +115,9 @@ func (s *awsService) createTable() error {
 		return tableRequiredErr
 	}
 	// Define table
-	partitionname := "dsig"
 	partitiontype := "S"
 	att1 := &dynamodb.AttributeDefinition{
-		AttributeName: aws.String(partitionname),
+		AttributeName: aws.String(awsSignatureKey),
 		AttributeType: aws.String(partitiontype),
 	}
 	ttlname := "dttl"
@@ -132,7 +129,7 @@ func (s *awsService) createTable() error {
 		}
 	*/
 	key := &dynamodb.KeySchemaElement{
-		AttributeName: aws.String(partitionname),
+		AttributeName: aws.String(awsSignatureKey),
 		KeyType:       aws.String("HASH"),
 	}
 	params := &dynamodb.CreateTableInput{
@@ -219,7 +216,51 @@ func (s *awsService) tableStatus(name string) awsTableStatus {
 	}
 }
 
-// ----------------------------------------
+// ------------------------------------------------------------
+// AWS-BUILDER
+
+// awsBuilder is a helper class for building API params.
+type awsBuilder struct {
+	condition string
+	values    map[string]*dynamodb.AttributeValue
+	err       error
+}
+
+func (b awsBuilder) value(key string, value interface{}) awsBuilder {
+	if b.values == nil {
+		b.values = make(map[string]*dynamodb.AttributeValue)
+	}
+	v, err := dynamodbattribute.Marshal(value)
+	if err != nil {
+		b.err = err
+		return b
+	}
+	b.values[key] = v
+	return b
+}
+
+func (b awsBuilder) put(dst *dynamodb.PutItemInput) {
+	if b.condition != "" {
+		dst.ConditionExpression = aws.String(b.condition)
+	}
+	if len(b.values) > 0 {
+		dst.ExpressionAttributeValues = b.values
+	}
+}
+
+// ------------------------------------------------------------
+// AWS-RECORD
+
+// awsRecord stores a single entry in the lock table.
+type awsRecord struct {
+	Signature    string    `json:"dsig,omitempty"`     // The ID for this lock. MUST MATCH awsSignatureKey
+	Signee       string    `json:"dsignee,omitempty"`  // The owner requesting the lock. MUST MATCH awsSigneeKey
+	Level        int       `json:"dlevel,omitempty"`   // The level of lock requested. Leave this at the default 0 if you don't require levels. MUST MATCH awsLevelKey
+	ExpiresEpoch int64     `json:"dexpires,omitempty"` // The time at which this lock expires (epoch). MUST MATCH awsExpiresKey
+	Expires      time.Time `json:"-"`                  // The time at which this lock expires. Convenience for clients.
+}
+
+// ------------------------------------------------------------
 // WAITING
 
 const (
@@ -244,7 +285,7 @@ func wait(cond condition) error {
 	return nil
 }
 
-// ----------------------------------------
+// ------------------------------------------------------------
 // CONST and VAR
 
 type awsTableStatus int
@@ -253,8 +294,15 @@ const (
 	awsMissing  awsTableStatus = iota // The table does not exist
 	awsCreating                       // The table is being created
 	awsReady                          // The table is ready
+
+	awsSignatureKey = "dsig"
+	awsSigneeKey    = "dsig"
+	awsLevelKey     = "dlevel"
+	awsExpiresKey   = "dexpires"
 )
 
 var (
-	emptyDuration = time.Second * 0
+	awsEmptyDuration = time.Second * 0
+
+	awsAcquireLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se OR awsLevelKey < :lv OR ` + awsExpiresKey + ` < :ex`
 )

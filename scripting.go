@@ -89,7 +89,7 @@ func readScriptJson(src interface{}, path string, dst interface{}) error {
 	return json.Unmarshal(b, dst)
 }
 
-// --------------------------------------------------------------------------------------
+// ------------------------------------------------------------
 // CONST and VAR
 
 const (

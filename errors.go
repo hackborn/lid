@@ -4,6 +4,22 @@ import (
 	"errors"
 )
 
+// ------------------------------------------------------------
+// PACKAGE-ERROR
+
+// PackageError struct provides additional information about an error.
+type PackageError struct {
+	Msg     string
+	Payload interface{}
+}
+
+func (e *PackageError) Error() string {
+	return e.Msg
+}
+
+// ------------------------------------------------------------
+// UTIL
+
 // mustErr() is a simple utility to panic on errors.
 func mustErr(err error) {
 	if err != nil {
@@ -14,7 +30,12 @@ func mustErr(err error) {
 // ------------------------------------------------------------
 // CONST and VAR
 
+const (
+	alreadyLockedMsg = "Already locked"
+)
+
 var (
+	alreadyLockedErr        = errors.New(alreadyLockedMsg)
 	badRequestErr           = errors.New("Bad request")
 	conditionFailedErr      = errors.New("Condition failed")
 	durationRequiredErr     = errors.New("Bad request: Duration required")
