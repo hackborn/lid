@@ -1,4 +1,4 @@
-package dlock
+package tack
 
 import (
 	"encoding/json"
@@ -206,7 +206,7 @@ func makeTestServices(t *testing.T) []ServiceBootstrap {
 	var services []ServiceBootstrap
 	if !testing.Short() {
 		// Currently we only test against a local dynamo.
-		awskey0 := "DLOCK_TESTING_AWS_DYNAMO_ENDPOINT"
+		awskey0 := "TACK_TESTING_AWS_DYNAMO_ENDPOINT"
 
 		// Check that the system is properly configured
 		if os.Getenv(awskey0) == "" {
@@ -219,7 +219,7 @@ func makeTestServices(t *testing.T) []ServiceBootstrap {
 		cfg := &aws.Config{}
 		cfg = cfg.WithRegion("us-west-2").WithEndpoint(val0)
 		sess := session.Must(session.NewSession(cfg))
-		tablename := "dlocktest_" + randomString(12)
+		tablename := "tacktest_" + randomString(12)
 		bootstrap := &awsServiceBootstrap{tablename: tablename, sess: sess}
 		services = append(services, bootstrap)
 	}

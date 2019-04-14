@@ -1,4 +1,4 @@
-package dlock
+package tack
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
