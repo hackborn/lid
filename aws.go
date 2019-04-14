@@ -57,7 +57,7 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 	ls, err := s.putItem(record, b)
 	if err != nil {
 		if err == conditionFailedErr {
-			return LockResponse{}, &PackageError{alreadyLockedMsg, ls.Signee}
+			return LockResponse{}, &Error{AlreadyLocked, alreadyLockedMsg, nil}
 		}
 		return LockResponse{}, err
 	}

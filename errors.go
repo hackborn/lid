@@ -5,15 +5,16 @@ import (
 )
 
 // ------------------------------------------------------------
-// PACKAGE-ERROR
+// ERROR
 
-// PackageError struct provides additional information about an error.
-type PackageError struct {
+// Error struct provides additional information about an error.
+type Error struct {
+	Code    int
 	Msg     string
 	Payload interface{}
 }
 
-func (e *PackageError) Error() string {
+func (e *Error) Error() string {
 	return e.Msg
 }
 
@@ -31,6 +32,8 @@ func mustErr(err error) {
 // CONST and VAR
 
 const (
+	AlreadyLocked = iota
+
 	alreadyLockedMsg = "Already locked"
 )
 

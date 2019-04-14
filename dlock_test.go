@@ -22,12 +22,14 @@ func TestService(t *testing.T) {
 		Script   string
 		WantResp ScriptResponse
 	}{
-		// Successfully acquire empty lock
+		// Acquire empty lock
 		{buildScript(lreq("a", "0", 0, false)), buildResp(lresp(LockOk, "", nil))},
-		// Fail acquiring existing lock
-		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", alreadyLockedErr))},
 		// Acquire existing lock through higher level
 		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 1, false)), buildResp(lresp(LockOk, "", nil), lresp(LockTransferred, "0", nil))},
+		// Acquire expired lock
+		{buildScript(durS(-20), lreq("a", "0", 0, false), durS(10), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockTransferred, "0", nil))},
+		// Fail acquiring existing, valid lock
+		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", alreadyLockedErr))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -64,6 +66,14 @@ func buildScript(elem ...interface{}) string {
 	return b.String()
 }
 
+// durS() creates a scripting object that applies a new duration to the service.
+func durS(seconds int64) interface{} {
+	cmd := make(map[string]interface{})
+	cmd[durCmd] = time.Duration(seconds) * time.Second
+	return cmd
+}
+
+// lreq() creates a scripting object to create a lock request.
 func lreq(signature, signee string, level int, force bool) interface{} {
 	body := make(map[string]interface{})
 	body["req"] = LockRequest{signature, signee, level}
@@ -83,6 +93,7 @@ func buildResp(elem ...[]interface{}) ScriptResponse {
 	return resp
 }
 
+// lresp() creates a response for a script lock request.
 func lresp(status LockResponseStatus, previousDevice string, err error) []interface{} {
 	resp := LockResponse{status, previousDevice}
 	return []interface{}{resp, err}
@@ -126,6 +137,13 @@ func interfaceEquals(a, b interface{}) bool {
 }
 
 // ------------------------------------------------------------
+// SERVICE DEBUG
+
+func (s *awsService) SetDuration(d time.Duration) {
+	s.opts.Duration = d
+}
+
+// ------------------------------------------------------------
 // TEST-CFG
 
 // ServiceBootstrap is responsible for initializing and cleaning up a service during testing.
@@ -145,7 +163,7 @@ func (b *awsServiceBootstrap) OpenService() Service {
 	// * Not supported in dynalite
 	// * Not supported in local dynamodb? (verify; add test if it is)
 	// * Hosted dynamo has no guarantee on when the item is actually deleted.
-	opts := ServiceOpts{Table: b.tablename, Duration: time.Second * 1}
+	opts := ServiceOpts{Table: b.tablename, Duration: time.Second * 10}
 	service, err := _newAwsServiceFromSession(opts, b.sess)
 	mustErr(err)
 	b.service = service

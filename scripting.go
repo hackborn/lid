@@ -6,6 +6,7 @@ import (
 	"github.com/hackborn/sqi"
 	"io"
 	"strings"
+	"time"
 )
 
 type ScriptResponse struct {
@@ -38,7 +39,9 @@ func runScript(_script interface{}, s Service) (ScriptResponse, error) {
 			if e != nil {
 				return resp, e
 			}
-			resp.History = append(resp.History, r)
+			if r != nil {
+				resp.History = append(resp.History, r)
+			}
 		}
 	}
 	return resp, nil
@@ -46,12 +49,27 @@ func runScript(_script interface{}, s Service) (ScriptResponse, error) {
 
 func runScriptCommand(command string, script interface{}, s Service) ([]interface{}, error) {
 	switch command {
+	case durCmd:
+		return runScriptDur(script, s)
 	case lockCmd:
 		return runScriptLock(script, s)
 	case unlockCmd:
 		return runScriptUnlock(script, s)
 	}
 	return nil, errors.New("Unknown script command (" + command + ")")
+}
+
+func runScriptDur(script interface{}, s Service) ([]interface{}, error) {
+	sd, ok := s.(ServiceDebug)
+	if !ok {
+		return nil, errors.New("Service does not implement ServiceDebug")
+	}
+	id, ok := script.(float64) // the JSON encoder sets the number to a float
+	if !ok {
+		return nil, errors.New("runScriptDur() on invalid duration")
+	}
+	sd.SetDuration(time.Duration(int64(id)))
+	return nil, nil
 }
 
 func runScriptLock(script interface{}, s Service) ([]interface{}, error) {
@@ -93,6 +111,7 @@ func readScriptJson(src interface{}, path string, dst interface{}) error {
 // CONST and VAR
 
 const (
+	durCmd    = "dur"
 	lockCmd   = "l"
 	unlockCmd = "u"
 )
