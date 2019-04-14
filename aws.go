@@ -51,11 +51,7 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 	endTime := now.Add(s.opts.Duration)
 	record := awsRecord{req.Signature, req.Signee, req.Level, endTime.UnixNano(), endTime}
 
-	// Acquire a lock if:
-	// * It does not exist
-	// * Or it does, and I own it
-	// * Or it does, but my lock level is higher
-	// * Or it does, but it's expired
+	// Acquire the lock. See Service.Lock() for the rules.
 	b := awsBuilder{condition: awsAcquireLockCond}
 	b = b.value(":se", req.Signee).value(":lv", req.Level).value(":ex", now.UnixNano())
 	if b.err != nil {
@@ -86,9 +82,7 @@ func (s *awsService) Unlock(req UnlockRequest, opts *UnlockOpts) (UnlockResponse
 		return UnlockResponse{}, errBadRequest
 	}
 
-	// Release a lock if:
-	// * It does not exist
-	// * Or it does, and I own it
+	// Release the lock. See Service.Unlock() for the rules.
 	b := awsBuilder{condition: awsReleaseLockCond}
 	b = b.key(awsSignatureKey, req.Signature).value(":se", req.Signee)
 	if b.err != nil {
