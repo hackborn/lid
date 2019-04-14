@@ -20,7 +20,7 @@ func TestService(t *testing.T) {
 
 	cases := []struct {
 		Script   string
-		WantResp ScriptResponse
+		WantResp scriptResponse
 	}{
 		// Acquire empty lock
 		{buildScript(lreq("a", "0", 0, false)), buildResp(lresp(LockOk, "", nil))},
@@ -29,7 +29,7 @@ func TestService(t *testing.T) {
 		// Acquire expired lock
 		{buildScript(durS(-20), lreq("a", "0", 0, false), durS(10), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockTransferred, "0", nil))},
 		// Fail acquiring existing, valid lock
-		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", alreadyLockedErr))},
+		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", errAlreadyLocked))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -40,7 +40,7 @@ func TestService(t *testing.T) {
 	}
 }
 
-func runTestService(t *testing.T, b ServiceBootstrap, script string, wantResp ScriptResponse) {
+func runTestService(t *testing.T, b ServiceBootstrap, script string, wantResp scriptResponse) {
 	s := b.OpenService()
 	defer b.CloseService()
 
@@ -85,8 +85,8 @@ func lreq(signature, signee string, level int, force bool) interface{} {
 	return cmd
 }
 
-func buildResp(elem ...[]interface{}) ScriptResponse {
-	resp := ScriptResponse{}
+func buildResp(elem ...[]interface{}) scriptResponse {
+	resp := scriptResponse{}
 	for _, e := range elem {
 		resp.History = append(resp.History, e)
 	}
@@ -102,7 +102,7 @@ func lresp(status LockResponseStatus, previousDevice string, err error) []interf
 // ------------------------------------------------------------
 // COMPARING
 
-func (a ScriptResponse) equals(b ScriptResponse) bool {
+func (a scriptResponse) equals(b scriptResponse) bool {
 	if len(a.History) != len(b.History) {
 		return false
 	}

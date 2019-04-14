@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type ScriptResponse struct {
+type scriptResponse struct {
 	History [][]interface{}
 }
 
@@ -19,11 +19,11 @@ type ScriptResponse struct {
 // goes wrong with preparing a script (but note that I do not
 // answer an error from running a command, all output is captured
 // by the script response).
-func runScript(_script interface{}, s Service) (ScriptResponse, error) {
-	resp := ScriptResponse{}
+func runScript(_script interface{}, s Service) (scriptResponse, error) {
+	resp := scriptResponse{}
 	script, ok := _script.(string)
 	if !ok {
-		return resp, badRequestErr
+		return resp, errBadRequest
 	}
 
 	dec := json.NewDecoder(strings.NewReader(script))
@@ -75,11 +75,11 @@ func runScriptDur(script interface{}, s Service) ([]interface{}, error) {
 func runScriptLock(script interface{}, s Service) ([]interface{}, error) {
 	req := LockRequest{}
 	opts := &LockOpts{}
-	err := readScriptJson(script, "/req", &req)
+	err := readScriptJSON(script, "/req", &req)
 	if err != nil {
 		return nil, err
 	}
-	err = readScriptJson(script, "/opts", opts)
+	err = readScriptJSON(script, "/opts", opts)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func runScriptUnlock(script interface{}, s Service) ([]interface{}, error) {
 	return nil, nil
 }
 
-func readScriptJson(src interface{}, path string, dst interface{}) error {
+func readScriptJSON(src interface{}, path string, dst interface{}) error {
 	v, err := sqi.Eval(path, src, nil)
 	if err != nil {
 		return err

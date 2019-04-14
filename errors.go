@@ -32,18 +32,19 @@ func mustErr(err error) {
 // CONST and VAR
 
 const (
+	// AlreadyLocked is the code for the already locked error.
 	AlreadyLocked = iota
 
 	alreadyLockedMsg = "Already locked"
 )
 
 var (
-	alreadyLockedErr        = errors.New(alreadyLockedMsg)
-	badRequestErr           = errors.New("Bad request")
-	conditionFailedErr      = errors.New("Condition failed")
-	durationRequiredErr     = errors.New("Bad request: Duration required")
-	dynamoRequiredErr       = errors.New("Can't create DynamoDB")
-	initializationFailedErr = errors.New("Initialization failed")
-	sessionRequiredErr      = errors.New("Session is required")
-	tableRequiredErr        = errors.New("Bad request: Table name required")
+	errAlreadyLocked        = errors.New(alreadyLockedMsg)
+	errBadRequest           = errors.New("Bad request")
+	errConditionFailed      = errors.New("Condition failed")
+	errDurationRequired     = errors.New("Bad request: Duration required")
+	errDynamoRequired       = errors.New("Can't create DynamoDB")
+	errInitializationFailed = errors.New("Initialization failed")
+	errSessionRequired      = errors.New("Session is required")
+	errTableRequired        = errors.New("Bad request: Table name required")
 )

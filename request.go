@@ -3,6 +3,7 @@ package dlock
 // ------------------------------------------------------------
 // LOCK-REQUEST
 
+// LockRequest provides the parameters to the Lock function.
 type LockRequest struct {
 	Signature string `json:"sig,omitempty"` // The ID for this lock
 	Signee    string `json:"sin,omitempty"` // The owner requesting the lock
@@ -12,6 +13,7 @@ type LockRequest struct {
 // ------------------------------------------------------------
 // UNLOCK-REQUEST
 
+// UnlockRequest provides the parameters to the Unlock function.
 type UnlockRequest struct {
 	Signature string `json:"sig,omitempty"` // The ID for this lock
 	Signee    string `json:"sin,omitempty"` // The owner requesting the lock

@@ -20,23 +20,25 @@ type awsService struct {
 	opts ServiceOpts
 }
 
+// NewAwsServiceFromSession constructs a new service based on the provide AWS session.
+// I will internally manage my own connection to a DynamoDB client.
 func NewAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (Service, error) {
 	return _newAwsServiceFromSession(opts, sess)
 }
 
 func _newAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (*awsService, error) {
 	if sess == nil {
-		return nil, sessionRequiredErr
+		return nil, errSessionRequired
 	}
 	if opts.Table == "" {
-		return nil, tableRequiredErr
+		return nil, errTableRequired
 	}
 	if opts.Duration == awsEmptyDuration {
-		return nil, durationRequiredErr
+		return nil, errDurationRequired
 	}
 	db := dynamodb.New(sess)
 	if db == nil {
-		return nil, dynamoRequiredErr
+		return nil, errDynamoRequired
 	}
 	return &awsService{db: db, opts: opts}, nil
 }
@@ -56,7 +58,7 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 
 	ls, err := s.putItem(record, b)
 	if err != nil {
-		if err == conditionFailedErr {
+		if err == errConditionFailed {
 			return LockResponse{}, &Error{AlreadyLocked, alreadyLockedMsg, nil}
 		}
 		return LockResponse{}, err
@@ -76,7 +78,7 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 // putItem() is a convenience wrapper for DynamoDB's PutItem()
 func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) {
 	if s.db == nil {
-		return awsRecord{}, initializationFailedErr
+		return awsRecord{}, errInitializationFailed
 	}
 	atts, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
@@ -91,7 +93,7 @@ func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) 
 	resp, err := s.db.PutItem(params)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-			return awsRecord{}, conditionFailedErr
+			return awsRecord{}, errConditionFailed
 		}
 		return awsRecord{}, err
 	}
@@ -112,7 +114,7 @@ func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) 
 // createTable() creates my lock table.
 func (s *awsService) createTable() error {
 	if s.opts.Table == "" {
-		return tableRequiredErr
+		return errTableRequired
 	}
 	// Define table
 	partitiontype := "S"
@@ -280,7 +282,7 @@ func wait(cond condition) error {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !cond() {
-		return conditionFailedErr
+		return errConditionFailed
 	}
 	return nil
 }
