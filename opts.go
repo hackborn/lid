@@ -13,6 +13,13 @@ type LockOpts struct {
 }
 
 // ------------------------------------------------------------
+// UNLOCK-OPTS
+
+// UnlockOpts is a placeholder in case we ever have options.
+type UnlockOpts struct {
+}
+
+// ------------------------------------------------------------
 // SERVICE-OPTS
 
 // ServiceOpts provides standard options when constructing a service.

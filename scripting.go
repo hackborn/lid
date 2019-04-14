@@ -13,12 +13,12 @@ type scriptResponse struct {
 	History [][]interface{}
 }
 
-// RunScript() ingests a string in our script format and returns
+// runScript ingests a string in our script format and returns
 // a response. The response will contain all outputs from every
 // command found in the script. Answer an error if anything
-// goes wrong with preparing a script (but note that I do not
+// goes wrong with preparing the script, but note that I do not
 // answer an error from running a command, all output is captured
-// by the script response).
+// by the script response.
 func runScript(_script interface{}, s Service) (scriptResponse, error) {
 	resp := scriptResponse{}
 	script, ok := _script.(string)
@@ -88,7 +88,13 @@ func runScriptLock(script interface{}, s Service) ([]interface{}, error) {
 }
 
 func runScriptUnlock(script interface{}, s Service) ([]interface{}, error) {
-	return nil, nil
+	req := UnlockRequest{}
+	err := readScriptJSON(script, "/req", &req)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.Unlock(req, nil)
+	return []interface{}{resp, err}, nil
 }
 
 func readScriptJSON(src interface{}, path string, dst interface{}) error {

@@ -12,11 +12,11 @@ import (
 	"time"
 )
 
-// TestService() func provides scripted testing for the service, allowing
-// complex command lists. It's a little painful to write tests, but there
+// TestService provides scripted testing for the service, allowing
+// chained command lists. It's a little painful to write tests, but there
 // isn't much value in testing a single locking function.
 func TestService(t *testing.T) {
-	bootstraps := makeTestServices(t)
+	suites := makeTestServices(t)
 
 	cases := []struct {
 		Script   string
@@ -26,14 +26,22 @@ func TestService(t *testing.T) {
 		{buildScript(lreq("a", "0", 0, false)), buildResp(lresp(LockOk, "", nil))},
 		// Acquire existing lock through higher level
 		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 1, false)), buildResp(lresp(LockOk, "", nil), lresp(LockTransferred, "0", nil))},
-		// Acquire expired lock
+		// Renew my existing lock
+		{buildScript(durS(-20), lreq("a", "0", 0, false), durS(10), lreq("a", "0", 1, false)), buildResp(lresp(LockOk, "", nil), lresp(LockRenewed, "", nil))},
+		// Acquire someone else's expired lock
 		{buildScript(durS(-20), lreq("a", "0", 0, false), durS(10), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockTransferred, "0", nil))},
 		// Fail acquiring existing, valid lock
-		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", errAlreadyLocked))},
+		{buildScript(lreq("a", "0", 0, false), lreq("a", "1", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", errForbidden))},
+		// Unlock a missing lock
+		{buildScript(ulreq("a", "0")), buildResp(ulresp(UnlockNoLock, nil))},
+		// Unlock an existing lock
+		{buildScript(lreq("a", "0", 0, false), ulreq("a", "0")), buildResp(lresp(LockOk, "", nil), ulresp(UnlockOk, nil))},
+		// Fail unlocking someone else's lock
+		{buildScript(lreq("a", "0", 0, false), ulreq("a", "1")), buildResp(lresp(LockOk, "", nil), ulresp(UnlockFailed, errForbidden))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			for _, b := range bootstraps {
+			for _, b := range suites {
 				runTestService(t, b, tc.Script, tc.WantResp)
 			}
 		})
@@ -50,7 +58,7 @@ func runTestService(t *testing.T, b ServiceBootstrap, script string, wantResp sc
 		fmt.Println("Mismatch have\n", haveResp, "\nwant\n", wantResp)
 		t.Fatal()
 	}
-	//	t.Fatal()
+	// t.Fatal()
 }
 
 // ------------------------------------------------------------
@@ -66,14 +74,14 @@ func buildScript(elem ...interface{}) string {
 	return b.String()
 }
 
-// durS() creates a scripting object that applies a new duration to the service.
+// durS creates a scripting object that applies a new duration to the service.
 func durS(seconds int64) interface{} {
 	cmd := make(map[string]interface{})
 	cmd[durCmd] = time.Duration(seconds) * time.Second
 	return cmd
 }
 
-// lreq() creates a scripting object to create a lock request.
+// lreq returns a scripting object to create a lock request.
 func lreq(signature, signee string, level int, force bool) interface{} {
 	body := make(map[string]interface{})
 	body["req"] = LockRequest{signature, signee, level}
@@ -85,6 +93,15 @@ func lreq(signature, signee string, level int, force bool) interface{} {
 	return cmd
 }
 
+// ulreq returns a scripting object to create an unlock request.
+func ulreq(signature, signee string) interface{} {
+	body := make(map[string]interface{})
+	body["req"] = UnlockRequest{signature, signee}
+	cmd := make(map[string]interface{})
+	cmd[unlockCmd] = body
+	return cmd
+}
+
 func buildResp(elem ...[]interface{}) scriptResponse {
 	resp := scriptResponse{}
 	for _, e := range elem {
@@ -93,9 +110,15 @@ func buildResp(elem ...[]interface{}) scriptResponse {
 	return resp
 }
 
-// lresp() creates a response for a script lock request.
+// lresp creates a response for a script lock request.
 func lresp(status LockResponseStatus, previousDevice string, err error) []interface{} {
 	resp := LockResponse{status, previousDevice}
+	return []interface{}{resp, err}
+}
+
+// ulresp creates a response for a script unlock request.
+func ulresp(status UnlockResponseStatus, err error) []interface{} {
+	resp := UnlockResponse{status}
 	return []interface{}{resp, err}
 }
 

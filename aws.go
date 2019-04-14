@@ -44,6 +44,9 @@ func _newAwsServiceFromSession(opts ServiceOpts, sess *session.Session) (*awsSer
 }
 
 func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error) {
+	if !req.isValid() {
+		return LockResponse{}, errBadRequest
+	}
 	now := time.Now()
 	endTime := now.Add(s.opts.Duration)
 	record := awsRecord{req.Signature, req.Signee, req.Level, endTime.UnixNano(), endTime}
@@ -55,11 +58,14 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 	// * Or it does, but it's expired
 	b := awsBuilder{condition: awsAcquireLockCond}
 	b = b.value(":se", req.Signee).value(":lv", req.Level).value(":ex", now.UnixNano())
+	if b.err != nil {
+		return LockResponse{}, b.err
+	}
 
 	ls, err := s.putItem(record, b)
 	if err != nil {
 		if err == errConditionFailed {
-			return LockResponse{}, &Error{AlreadyLocked, alreadyLockedMsg, nil}
+			return LockResponse{}, &Error{Forbidden, forbiddenMsg, nil}
 		}
 		return LockResponse{}, err
 	}
@@ -75,7 +81,35 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 	return resp, err
 }
 
-// putItem() is a convenience wrapper for DynamoDB's PutItem()
+func (s *awsService) Unlock(req UnlockRequest, opts *UnlockOpts) (UnlockResponse, error) {
+	if !req.isValid() {
+		return UnlockResponse{}, errBadRequest
+	}
+
+	// Release a lock if:
+	// * It does not exist
+	// * Or it does, and I own it
+	b := awsBuilder{condition: awsReleaseLockCond}
+	b = b.key(awsSignatureKey, req.Signature).value(":se", req.Signee)
+	if b.err != nil {
+		return UnlockResponse{}, b.err
+	}
+
+	ls, err := s.deleteItem(b)
+	if err != nil {
+		if err == errConditionFailed {
+			return UnlockResponse{}, &Error{Forbidden, forbiddenMsg, nil}
+		}
+		return UnlockResponse{}, err
+	}
+	resp := UnlockResponse{UnlockOk}
+	if ls.Signature == "" {
+		resp.Status = UnlockNoLock
+	}
+	return resp, nil
+}
+
+// putItem is a convenience wrapper for DynamoDB's PutItem().
 func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) {
 	if s.db == nil {
 		return awsRecord{}, errInitializationFailed
@@ -105,6 +139,31 @@ func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) 
 	if err == nil && record.ExpiresEpoch != 0 {
 		record.Expires = time.Unix(0, record.ExpiresEpoch)
 	}
+	return record, err
+}
+
+// deleteItem is a convenience wrapper for DynamoDB's DeleteItem().
+func (s *awsService) deleteItem(b awsBuilder) (awsRecord, error) {
+	if s.db == nil {
+		return awsRecord{}, errInitializationFailed
+	}
+	params := &dynamodb.DeleteItemInput{
+		TableName:    aws.String(s.opts.Table),
+		ReturnValues: aws.String("ALL_OLD"),
+	}
+	b.delete(params)
+	resp, err := s.db.DeleteItem(params)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			return awsRecord{}, errConditionFailed
+		}
+		return awsRecord{}, err
+	}
+	if len(resp.Attributes) < 1 {
+		return awsRecord{}, nil
+	}
+	record := awsRecord{}
+	err = dynamodbattribute.UnmarshalMap(resp.Attributes, &record)
 	return record, err
 }
 
@@ -223,25 +282,51 @@ func (s *awsService) tableStatus(name string) awsTableStatus {
 
 // awsBuilder is a helper class for building API params.
 type awsBuilder struct {
+	keys      map[string]*dynamodb.AttributeValue
 	condition string
 	values    map[string]*dynamodb.AttributeValue
 	err       error
 }
 
-func (b awsBuilder) value(key string, value interface{}) awsBuilder {
-	if b.values == nil {
-		b.values = make(map[string]*dynamodb.AttributeValue)
-	}
-	v, err := dynamodbattribute.Marshal(value)
-	if err != nil {
-		b.err = err
-		return b
-	}
-	b.values[key] = v
+func (b awsBuilder) key(key string, value interface{}) awsBuilder {
+	dst, err := b.marshalToMap(key, value, b.keys)
+	b.keys = dst
+	b.err = mergeErr(b.err, err)
 	return b
 }
 
+func (b awsBuilder) value(key string, value interface{}) awsBuilder {
+	dst, err := b.marshalToMap(key, value, b.values)
+	b.values = dst
+	b.err = mergeErr(b.err, err)
+	return b
+}
+
+func (b awsBuilder) marshalToMap(key string, value interface{}, dst map[string]*dynamodb.AttributeValue) (map[string]*dynamodb.AttributeValue, error) {
+	if dst == nil {
+		dst = make(map[string]*dynamodb.AttributeValue)
+	}
+	v, err := dynamodbattribute.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	dst[key] = v
+	return dst, nil
+}
+
 func (b awsBuilder) put(dst *dynamodb.PutItemInput) {
+	if b.condition != "" {
+		dst.ConditionExpression = aws.String(b.condition)
+	}
+	if len(b.values) > 0 {
+		dst.ExpressionAttributeValues = b.values
+	}
+}
+
+func (b awsBuilder) delete(dst *dynamodb.DeleteItemInput) {
+	if len(b.keys) > 0 {
+		dst.Key = b.keys
+	}
 	if b.condition != "" {
 		dst.ConditionExpression = aws.String(b.condition)
 	}
@@ -298,7 +383,7 @@ const (
 	awsReady                          // The table is ready
 
 	awsSignatureKey = "dsig"
-	awsSigneeKey    = "dsig"
+	awsSigneeKey    = "dsignee"
 	awsLevelKey     = "dlevel"
 	awsExpiresKey   = "dexpires"
 )
@@ -307,4 +392,5 @@ var (
 	awsEmptyDuration = time.Second * 0
 
 	awsAcquireLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se OR ` + awsLevelKey + ` < :lv OR ` + awsExpiresKey + ` < :ex`
+	awsReleaseLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se`
 )

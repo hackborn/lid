@@ -21,7 +21,17 @@ func (e *Error) Error() string {
 // ------------------------------------------------------------
 // UTIL
 
-// mustErr() is a simple utility to panic on errors.
+// mergeErr returns the first valid error.
+func mergeErr(a ...error) error {
+	for _, e := range a {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// mustErr panics on a non-nil error.
 func mustErr(err error) {
 	if err != nil {
 		panic(err)
@@ -32,14 +42,14 @@ func mustErr(err error) {
 // CONST and VAR
 
 const (
-	// AlreadyLocked is the code for the already locked error.
-	AlreadyLocked = iota
+	// Forbidden describes a lock that exists but is owned by another signee.
+	Forbidden = iota
 
-	alreadyLockedMsg = "Already locked"
+	forbiddenMsg = "Forbidden"
 )
 
 var (
-	errAlreadyLocked        = errors.New(alreadyLockedMsg)
+	errForbidden            = errors.New(forbiddenMsg)
 	errBadRequest           = errors.New("Bad request")
 	errConditionFailed      = errors.New("Condition failed")
 	errDurationRequired     = errors.New("Bad request: Duration required")
