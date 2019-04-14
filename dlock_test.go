@@ -22,7 +22,10 @@ func TestService(t *testing.T) {
 		Script   string
 		WantResp ScriptResponse
 	}{
-		{buildScript(lreq("s", "a", 0, false)), buildResp(lresp(LockFailed, "", nil))},
+		// Successfully acquire empty lock
+		{buildScript(lreq("s", "a", 0, false)), buildResp(lresp(LockOk, "", nil))},
+		// Fail acquiring existing lock
+		{buildScript(lreq("s1", "a", 0, false), lreq("s1", "b", 0, false)), buildResp(lresp(LockOk, "", nil), lresp(LockFailed, "", nil))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

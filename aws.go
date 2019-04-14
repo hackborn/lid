@@ -47,14 +47,69 @@ func (s *awsService) Lock(req LockRequest, opts *LockOpts) (LockResponse, error)
 		return LockResponse{}, initializationFailedErr
 	}
 	endTime := time.Now().Add(s.opts.Duration)
-	state := LockState{req.Signature, req.Signee, req.Level, endTime, endTime.Unix()}
+	state := LockState{req.Signature, req.Signee, req.Level, endTime, endTime.UnixNano()}
 	// Acquire a lock if:
 	// * It does not exist
 	// * Or it does, and I own it
 	// * Or it does, but my lock is higher
-	err := s.putItem(state, "")
-	return LockResponse{}, err
+	// * Or it does, but it's expired
+	ls, err := s.putItem(state, "")
+	if err != nil {
+		if err == conditionFailedErr {
+			return LockResponse{Status: LockFailed}, nil
+		}
+		return LockResponse{}, err
+	}
+	fmt.Println("Lock() lockstate", ls, "err", err)
+	resp := LockResponse{LockOk, ""}
+	if ls.Signee != "" {
+		if ls.Signee == req.Signee {
+			resp.Status = LockRenewed
+		} else {
+			resp.Status = LockTransferred
+			resp.PreviousSignee = ls.Signee
+		}
+	}
+	return resp, err
 }
+
+// putItem() is a convenience wrapper for DynamoDB's PutItem()
+func (s *awsService) putItem(item interface{}, condition string) (LockState, error) {
+	atts, err := dynamodbattribute.MarshalMap(item)
+	if err != nil {
+		return LockState{}, err
+	}
+	params := &dynamodb.PutItemInput{
+		TableName:    aws.String(s.opts.Table),
+		Item:         atts,
+		ReturnValues: aws.String("ALL_OLD"),
+	}
+	if condition != "" {
+		params.ConditionExpression = aws.String(condition)
+	}
+	//	if opts != nil && opts.values != nil {
+	//		params.ExpressionAttributeValues = opts.values
+	//	}
+	resp, err := s.db.PutItem(params)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			return LockState{}, conditionFailedErr
+		}
+		return LockState{}, err
+	}
+	if len(resp.Attributes) < 1 {
+		return LockState{}, nil
+	}
+	ls := LockState{}
+	err = dynamodbattribute.UnmarshalMap(resp.Attributes, &ls)
+	if err == nil && ls.ExpiresInt != 0 {
+		ls.Expires = time.Unix(0, ls.ExpiresInt)
+	}
+	return ls, err
+}
+
+// --------------------------------------------------------------------------------------
+// TABLE MANAGEMENT
 
 // createTable() creates my lock table.
 func (s *awsService) createTable() error {
@@ -162,27 +217,6 @@ func (s *awsService) tableStatus(name string) awsTableStatus {
 	default:
 		return awsReady
 	}
-}
-
-func (s *awsService) putItem(item interface{}, condition string) error {
-	atts, err := dynamodbattribute.MarshalMap(item)
-	if err != nil {
-		return err
-	}
-	params := &dynamodb.PutItemInput{
-		TableName:    aws.String(s.opts.Table),
-		Item:         atts,
-		ReturnValues: aws.String("ALL_OLD"),
-	}
-	if condition != "" {
-		params.ConditionExpression = aws.String(condition)
-	}
-	//	if opts != nil && opts.values != nil {
-	//		params.ExpressionAttributeValues = opts.values
-	//	}
-	resp, err := s.db.PutItem(params)
-	fmt.Println("put resp", resp)
-	return err
 }
 
 // ----------------------------------------

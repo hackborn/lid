@@ -5,7 +5,7 @@ package dlock
 
 type LockResponse struct {
 	Status         LockResponseStatus `json:"status,omitempty"`
-	PreviousDevice string             `json:"previous_device,omitempty"` // If I acquired a stale lock, this is the former owner
+	PreviousSignee string             `json:"previous_signee,omitempty"` // If I acquired a stale lock, this is the former owner
 }
 
 // Ok() answers true if the requester has the lock, regardless of
@@ -35,7 +35,7 @@ func (r *UnlockResponse) Ok() bool {
 // STATUS-RESPONSE
 
 type StatusResponse struct {
-	Device string
+	Signee string
 	Level  string
 }
 
