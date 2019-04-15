@@ -1,4 +1,4 @@
-package tack
+package lid
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
@@ -334,10 +334,10 @@ func (b awsBuilder) delete(dst *dynamodb.DeleteItemInput) {
 
 // awsRecord stores a single entry in the lock table.
 type awsRecord struct {
-	Signature    string    `json:"dsig"`     // The ID for this lock. MUST MATCH awsSignatureKey
-	Signee       string    `json:"dsignee"`  // The owner requesting the lock. MUST MATCH awsSigneeKey
-	Level        int       `json:"dlevel"`   // The level of lock requested. Leave this at the default 0 if you don't require levels. MUST MATCH awsLevelKey
-	ExpiresEpoch int64     `json:"dexpires"` // The time at which this lock expires (epoch). MUST MATCH awsExpiresKey
+	Signature    string    `json:"lsig"`     // The ID for this lock. MUST MATCH awsSignatureKey
+	Signee       string    `json:"lsignee"`  // The owner requesting the lock. MUST MATCH awsSigneeKey
+	Level        int       `json:"llevel"`   // The level of lock requested. Leave this at the default 0 if you don't require levels. MUST MATCH awsLevelKey
+	ExpiresEpoch int64     `json:"lexpires"` // The time at which this lock expires (epoch). MUST MATCH awsExpiresKey
 	Expires      time.Time `json:"-"`        // The time at which this lock expires. Convenience for clients.
 }
 
@@ -376,10 +376,10 @@ const (
 	awsCreating                       // The table is being created
 	awsReady                          // The table is ready
 
-	awsSignatureKey = "dsig"
-	awsSigneeKey    = "dsignee"
-	awsLevelKey     = "dlevel"
-	awsExpiresKey   = "dexpires"
+	awsSignatureKey = "lsig"
+	awsSigneeKey    = "lsignee"
+	awsLevelKey     = "llevel"
+	awsExpiresKey   = "lexpires"
 )
 
 var (

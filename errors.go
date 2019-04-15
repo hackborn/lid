@@ -1,4 +1,4 @@
-package tack
+package lid
 
 import (
 	"errors"

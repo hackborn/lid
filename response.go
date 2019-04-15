@@ -1,4 +1,4 @@
-package tack
+package lid
 
 // ------------------------------------------------------------
 // LOCK-RESPONSE
@@ -26,7 +26,7 @@ func (a *LockResponse) Created() bool {
 
 // UnlockResponse provides the output from the Unlock function.
 type UnlockResponse struct {
-	Status UnlockResponseStatus
+	Status UnlockResponseStatus `json:"status,omitempty"`
 }
 
 // Ok answers true if the lock no longer exists.
