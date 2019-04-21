@@ -10,7 +10,7 @@ type LockRequest struct {
 	Level     int    `json:"level,omitempty"`     // The level of lock requested. Leave this at the default 0 if you don't require levels.
 }
 
-func (r LockRequest) isValid() bool {
+func (r LockRequest) IsValid() bool {
 	return r.Signature != "" && r.Signee != ""
 }
 
@@ -23,6 +23,6 @@ type UnlockRequest struct {
 	Signee    string `json:"signee,omitempty"`    // The owner requesting the lock
 }
 
-func (r UnlockRequest) isValid() bool {
+func (r UnlockRequest) IsValid() bool {
 	return r.Signature != "" && r.Signee != ""
 }

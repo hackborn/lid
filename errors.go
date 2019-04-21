@@ -21,8 +21,9 @@ func (e *Error) Error() string {
 // ------------------------------------------------------------
 // UTIL
 
-// mergeErr returns the first valid error.
-func mergeErr(a ...error) error {
+// MergeErr returns the first valid error.
+// Clearly this belongs in a richer error handling package.
+func MergeErr(a ...error) error {
 	for _, e := range a {
 		if e != nil {
 			return e
@@ -31,8 +32,9 @@ func mergeErr(a ...error) error {
 	return nil
 }
 
-// mustErr panics on a non-nil error.
-func mustErr(err error) {
+// MustErr panics on a non-nil error.
+// Clearly this belongs in a richer error handling package.
+func MustErr(err error) {
 	if err != nil {
 		panic(err)
 	}
@@ -49,12 +51,6 @@ const (
 )
 
 var (
-	errForbidden            = errors.New(forbiddenMsg)
-	errBadRequest           = errors.New("Bad request")
-	errConditionFailed      = errors.New("Condition failed")
-	errDurationRequired     = errors.New("Bad request: Duration required")
-	errDynamoRequired       = errors.New("Can't create DynamoDB")
-	errInitializationFailed = errors.New("Initialization failed")
-	errSessionRequired      = errors.New("Session is required")
-	errTableRequired        = errors.New("Bad request: Table name required")
+	ErrForbidden  = &Error{Forbidden, forbiddenMsg, nil}
+	ErrBadRequest = errors.New("Bad request")
 )

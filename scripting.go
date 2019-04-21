@@ -23,7 +23,7 @@ func runScript(_script interface{}, s Service) (scriptResponse, error) {
 	resp := scriptResponse{}
 	script, ok := _script.(string)
 	if !ok {
-		return resp, errBadRequest
+		return resp, ErrBadRequest
 	}
 
 	dec := json.NewDecoder(strings.NewReader(script))
