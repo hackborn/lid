@@ -44,6 +44,12 @@ func (b awsBuilder) marshalToMap(key string, value interface{}, dst map[string]*
 	return dst, nil
 }
 
+func (b awsBuilder) get(dst *dynamodb.GetItemInput) {
+	if len(b.keys) > 0 {
+		dst.Key = b.keys
+	}
+}
+
 func (b awsBuilder) put(dst *dynamodb.PutItemInput) {
 	if b.condition != "" {
 		dst.ConditionExpression = aws.String(b.condition)

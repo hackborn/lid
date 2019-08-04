@@ -49,6 +49,8 @@ func runScript(_script interface{}, s Service) (scriptResponse, error) {
 
 func runScriptCommand(command string, script interface{}, s Service) ([]interface{}, error) {
 	switch command {
+	case checkCmd:
+		return runScriptCheck(script, s)
 	case durCmd:
 		return runScriptDur(script, s)
 	case lockCmd:
@@ -57,6 +59,16 @@ func runScriptCommand(command string, script interface{}, s Service) ([]interfac
 		return runScriptUnlock(script, s)
 	}
 	return nil, errors.New("Unknown script command (" + command + ")")
+}
+
+func runScriptCheck(script interface{}, s Service) ([]interface{}, error) {
+	var signature string
+	err := readScriptJSON(script, "/sig", &signature)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.Check(signature)
+	return []interface{}{resp, err}, nil
 }
 
 func runScriptDur(script interface{}, s Service) ([]interface{}, error) {
@@ -117,6 +129,7 @@ func readScriptJSON(src interface{}, path string, dst interface{}) error {
 // CONST and VAR
 
 const (
+	checkCmd  = "c"
 	durCmd    = "dur"
 	lockCmd   = "l"
 	unlockCmd = "u"

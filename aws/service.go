@@ -104,6 +104,49 @@ func (s *awsService) Unlock(req lid.UnlockRequest, opts *lid.UnlockOpts) (lid.Un
 	return resp, nil
 }
 
+// Check() answers the state of a the requested lock. An error is answered
+// if the lock doesn't exist.
+// DO NOT USE THIS FUNCTION. It doesn't have much value, but exists as
+// I transition a service to this library.
+func (s *awsService) Check(signature string) (lid.CheckResponse, error) {
+	if signature == "" {
+		return lid.CheckResponse{}, lid.ErrBadRequest
+	}
+	b := awsBuilder{}
+	b = b.key(awsSignatureKey, signature)
+	if b.err != nil {
+		return lid.CheckResponse{}, b.err
+	}
+	r, err := s.getItem(b)
+	if err == nil && r.Signee != "" {
+		return lid.CheckResponse{r.Signee, r.Level}, nil
+	}
+	return lid.CheckResponse{}, lid.ErrNotFound
+}
+
+// getItem() is a convenience wrapper for DynamoDB's PutItem().
+func (s *awsService) getItem(b awsBuilder) (awsRecord, error) {
+	if s.db == nil {
+		return awsRecord{}, errInitializationFailed
+	}
+	params := &dynamodb.GetItemInput{
+		TableName: aws.String(s.opts.Table),
+	}
+	b.get(params)
+	r, err := s.db.GetItem(params)
+	if err != nil {
+		return awsRecord{}, err
+	}
+	if len(r.Item) > 0 {
+		record := awsRecord{}
+		err = dynamodbattribute.UnmarshalMap(r.Item, &record)
+		if err == nil {
+			return record, nil
+		}
+	}
+	return awsRecord{}, lid.ErrNotFound
+}
+
 // putItem is a convenience wrapper for DynamoDB's PutItem().
 func (s *awsService) putItem(item interface{}, b awsBuilder) (awsRecord, error) {
 	if s.db == nil {

@@ -35,6 +35,15 @@ func (r *UnlockResponse) Ok() bool {
 }
 
 // ------------------------------------------------------------
+// CHECK-RESPONSE
+
+// CheckResponse provides the state of a lock.
+type CheckResponse struct {
+	Signee string `json:"signee,omitempty"` // The owner of the lock.
+	Level  int    `json:"level,omitempty"`  // The level of the lock.
+}
+
+// ------------------------------------------------------------
 // CONST and VAR
 
 // LockResponseStatus defines a status code for the response.

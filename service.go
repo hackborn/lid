@@ -26,6 +26,13 @@ type Service interface {
 	// * It does not exist
 	// * Or it does, and I own it
 	Unlock(req UnlockRequest, opts *UnlockOpts) (UnlockResponse, error)
+
+	// Check answers the current state of the lock.
+	// DO NOT USE THIS FUNCTION. There's little value in finding out
+	// what state a lock was in at some previous point in time; it
+	// exists solely to ease transitioning of a private service to this
+	// library. It will likely be removed at some point.
+	Check(signature string) (CheckResponse, error)
 }
 
 // ------------------------------------------------------------

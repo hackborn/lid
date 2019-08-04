@@ -34,6 +34,12 @@ func RunTestServiceSuite(t *testing.T, suites []ServiceBootstrap) {
 		{buildScript(lreq("a", "0", 0, false), ulreq("a", "0")), buildResp(lresp(LockOk, "", nil), ulresp(UnlockOk, nil))},
 		// Fail unlocking someone else's lock
 		{buildScript(lreq("a", "0", 0, false), ulreq("a", "1")), buildResp(lresp(LockOk, "", nil), ulresp(UnlockFailed, ErrForbidden))},
+		// Check an existing lock
+		{buildScript(lreq("a", "0", 0, false), check("a")), buildResp(lresp(LockOk, "", nil), cresp("0", 0, nil))},
+		{buildScript(lreq("a", "b", 2, false), check("a")), buildResp(lresp(LockOk, "", nil), cresp("b", 2, nil))},
+		// Check a non existing lock
+		{buildScript(check("b")), buildResp(cresp("", 0, ErrNotFound))},
+		{buildScript(lreq("a", "0", 0, false), check("b")), buildResp(lresp(LockOk, "", nil), cresp("", 0, ErrNotFound))},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -68,6 +74,15 @@ func buildScript(elem ...interface{}) string {
 		b.WriteString(string(data))
 	}
 	return b.String()
+}
+
+// check returns a scripting object to create a check argument.
+func check(signature string) interface{} {
+	body := make(map[string]interface{})
+	body["sig"] = signature
+	cmd := make(map[string]interface{})
+	cmd[checkCmd] = body
+	return cmd
 }
 
 // durS creates a scripting object that applies a new duration to the service.
@@ -115,6 +130,12 @@ func lresp(status LockResponseStatus, previousDevice string, err error) []interf
 // ulresp creates a response for a script unlock request.
 func ulresp(status UnlockResponseStatus, err error) []interface{} {
 	resp := UnlockResponse{status}
+	return []interface{}{resp, err}
+}
+
+// cresp creates a response for a script check.
+func cresp(signee string, level int, err error) []interface{} {
+	resp := CheckResponse{signee, level}
 	return []interface{}{resp, err}
 }
 

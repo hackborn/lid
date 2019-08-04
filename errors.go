@@ -53,4 +53,5 @@ const (
 var (
 	ErrForbidden  = &Error{Forbidden, forbiddenMsg, nil}
 	ErrBadRequest = errors.New("Bad request")
+	ErrNotFound   = errors.New("Not found")
 )
