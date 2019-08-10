@@ -62,7 +62,8 @@ func (s *awsService) createTable() error {
 	}
 
 	// Enable time to live
-	if !s.opts.TimeToLive.IsZero() {
+	var emptyDur time.Duration
+	if s.opts.TimeToLive != emptyDur {
 		ttlparams := &dynamodb.UpdateTimeToLiveInput{
 			TableName: aws.String(s.opts.Table),
 			TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{

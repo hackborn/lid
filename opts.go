@@ -26,5 +26,5 @@ type UnlockOpts struct {
 type ServiceOpts struct {
 	Table      string        // Name of the table with lock data. NOTE: The package will manage this table, deleting it at will.
 	Duration   time.Duration // The duration before the lock expires.
-	TimeToLive time.Time     // Non-empty values will set a time to live on the lock table.
+	TimeToLive time.Duration // Non-empty values will enable time to live on the lock table and expire items after the duration.
 }
