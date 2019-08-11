@@ -97,7 +97,7 @@ func lreq(signature, signee string, level int, force bool) interface{} {
 	body := make(map[string]interface{})
 	body["req"] = LockRequest{signature, signee, level}
 	if force {
-		body["opts"] = LockOpts{true}
+		body["opts"] = LockOpts{Force: true}
 	}
 	cmd := make(map[string]interface{})
 	cmd[lockCmd] = body

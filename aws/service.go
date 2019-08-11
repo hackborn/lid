@@ -56,7 +56,7 @@ func (s *awsService) Lock(req lid.LockRequest, opts *lid.LockOpts) (lid.LockResp
 	}
 	now := time.Now()
 	endTime := now.Add(s.opts.Duration)
-	record := awsRecord{req.Signature, req.Signee, req.Level, endTime.UnixNano(), endTime}
+	record := awsRecord{req.Signature, req.Signee, req.Level, endTime.UnixNano(), s.getTtl(opts), endTime}
 
 	// Acquire the lock. See Service.Lock() for the rules.
 	b := awsBuilder{condition: awsAcquireLockCond}
@@ -82,6 +82,17 @@ func (s *awsService) Lock(req lid.LockRequest, opts *lid.LockOpts) (lid.LockResp
 		}
 	}
 	return resp, err
+}
+
+func (s *awsService) getTtl(opts *lid.LockOpts) int64 {
+	ttl := s.opts.TimeToLive
+	if opts != nil && opts.TimeToLive != emptyTtl {
+		ttl = opts.TimeToLive
+	}
+	if ttl != emptyTtl {
+		return time.Now().Add(ttl).Unix()
+	}
+	return 0
 }
 
 func (s *awsService) Unlock(req lid.UnlockRequest, opts *lid.UnlockOpts) (lid.UnlockResponse, error) {
@@ -223,6 +234,7 @@ const (
 
 var (
 	awsEmptyDuration = time.Second * 0
+	emptyTtl         time.Duration
 
 	awsAcquireLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se OR ` + awsLevelKey + ` < :lv OR ` + awsExpiresKey + ` < :ex`
 	awsReleaseLockCond = `attribute_not_exists(` + awsSignatureKey + `) OR ` + awsSigneeKey + ` = :se`

@@ -179,5 +179,5 @@ const (
 	awsCreating                       // The table is being created
 	awsReady                          // The table is ready
 
-	ttlAttributeName = "dttl"
+	ttlAttributeName = "lttl"
 )

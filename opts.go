@@ -9,7 +9,9 @@ import (
 
 // LockOpts provides options for the Lock operation.
 type LockOpts struct {
-	Force bool `json:"force,omitempty"` // If true then force the lock, even if someone else owns it.
+	Force      bool          `json:"force,omitempty"` // If true then force the lock, even if someone else owns it.
+	Duration   time.Duration // Override the service default
+	TimeToLive time.Duration // Override the service default
 }
 
 // ------------------------------------------------------------
