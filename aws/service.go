@@ -41,7 +41,13 @@ func _newAwsServiceFromSession(opts lid.ServiceOpts, sess *session.Session) (*aw
 	if db == nil {
 		return nil, errDynamoRequired
 	}
-	return &awsService{db: db, opts: opts}, nil
+	s := &awsService{db: db, opts: opts}
+	// Make sure the table has been constructed
+	err := s.createTable()
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func (s *awsService) Lock(req lid.LockRequest, opts *lid.LockOpts) (lid.LockResponse, error) {

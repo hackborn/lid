@@ -5,6 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/hackborn/lid"
+	"strings"
 	"time"
 )
 
@@ -22,11 +23,10 @@ func (s *awsService) createTable() error {
 		AttributeName: aws.String(awsSignatureKey),
 		AttributeType: aws.String(partitiontype),
 	}
-	ttlname := "dttl"
 	/*
 		ttltype := "N"
 		att2 := &dynamodb.AttributeDefinition{
-			AttributeName: aws.String(ttlname),
+			AttributeName: aws.String(ttlAttributeName),
 			AttributeType: aws.String(ttltype),
 		}
 	*/
@@ -49,6 +49,10 @@ func (s *awsService) createTable() error {
 	// Create table
 	_, err := s.db.CreateTable(params)
 	if err != nil {
+		// Indicates the table already exists.
+		if isAwsErrorCode(err, dynamodb.ErrCodeResourceInUseException) {
+			return nil
+		}
 		return err
 	}
 
@@ -67,11 +71,16 @@ func (s *awsService) createTable() error {
 		ttlparams := &dynamodb.UpdateTimeToLiveInput{
 			TableName: aws.String(s.opts.Table),
 			TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
-				AttributeName: aws.String(ttlname),
+				AttributeName: aws.String(ttlAttributeName),
 				Enabled:       aws.Bool(true),
 			},
 		}
 		_, err = s.db.UpdateTimeToLive(ttlparams)
+		// This is returned by dynalite, all we can do is eat it to prevent
+		// incompatibilities.
+		if strings.HasPrefix(err.Error(), "UnknownOperationException") {
+			err = nil
+		}
 	}
 	return err
 }
@@ -120,6 +129,22 @@ func (s *awsService) tableStatus(name string) awsTableStatus {
 }
 
 // ------------------------------------------------------------
+// BOILERPLATE
+
+func isAwsErrorCode(err error, code string) bool {
+	if err == nil {
+		return false
+	}
+	if aerr, ok := err.(awserr.Error); ok {
+		switch aerr.Code() {
+		case code:
+			return true
+		}
+	}
+	return false
+}
+
+// ------------------------------------------------------------
 // WAITING
 
 const (
@@ -153,4 +178,6 @@ const (
 	awsMissing  awsTableStatus = iota // The table does not exist
 	awsCreating                       // The table is being created
 	awsReady                          // The table is ready
+
+	ttlAttributeName = "dttl"
 )
